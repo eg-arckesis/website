@@ -11,7 +11,7 @@
 //   CONTACT_TO         (plain text, your real inbox)
 //   CONTACT_FROM       (plain text, e.g. ARCKESIS <hello@send.arckesis.com>)
 
-const LIMIT = { name: 100, email: 254, message: 5000 };
+const LIMIT = { name: 100, email: 254, subject: 150, message: 5000 };
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -26,6 +26,11 @@ function clean(value, limit) {
 
 function looksLikeEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
+}
+
+// Anything going into an email header must not contain line breaks.
+function headerSafe(value) {
+  return value.replace(/[\r\n]+/g, " ").trim();
 }
 
 function escapeHtml(value) {
@@ -72,6 +77,7 @@ export async function onRequestPost(context) {
 
   const name = clean(payload.name, LIMIT.name);
   const email = clean(payload.email, LIMIT.email);
+  const subject = headerSafe(clean(payload.subject, LIMIT.subject));
   const message = clean(payload.message, LIMIT.message);
 
   if (!name || !email || !message) {
@@ -97,12 +103,14 @@ export async function onRequestPost(context) {
   const safe = {
     name: escapeHtml(name),
     email: escapeHtml(email),
+    subject: escapeHtml(subject),
     message: escapeHtml(message).replace(/\n/g, "<br>"),
   };
 
   const html =
     '<div style="font-family:Georgia,serif;font-size:15px;line-height:24px;color:#302F2D">' +
     "<p><strong>From:</strong> " + safe.name + " (" + safe.email + ")</p>" +
+    (subject ? "<p><strong>Subject:</strong> " + safe.subject + "</p>" : "") +
     "<p><strong>Message:</strong></p>" +
     "<p>" + safe.message + "</p>" +
     '<hr style="border:none;border-top:1px solid #E8E0D0;margin:24px 0">' +
@@ -110,8 +118,14 @@ export async function onRequestPost(context) {
     "</div>";
 
   const text =
-    "From: " + name + " (" + email + ")\n\n" + message +
+    "From: " + name + " (" + email + ")\n" +
+    (subject ? "Subject: " + subject + "\n" : "") +
+    "\n" + message +
     "\n\n---\nSent from the contact form on arckesis.com";
+
+  const emailSubject = subject
+    ? "ARCKESIS: " + subject
+    : "ARCKESIS contact form: " + name;
 
   try {
     const res = await fetch("https://api.resend.com/emails", {
@@ -124,7 +138,7 @@ export async function onRequestPost(context) {
         from: env.CONTACT_FROM,
         to: [env.CONTACT_TO],
         reply_to: email,
-        subject: "ARCKESIS contact form: " + name,
+        subject: emailSubject,
         html: html,
         text: text,
       }),
