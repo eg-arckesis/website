@@ -9,7 +9,7 @@
 //   EMAILOCTOPUS_LIST_ID   (plain text)
 
 const API_BASE = "https://api.emailoctopus.com";
-const LIMIT = { email: 254 };
+const LIMIT = { email: 254, name: 100 };
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -43,6 +43,8 @@ export async function onRequestPost(context) {
 
   // Accept either key name so this works whatever the form sends.
   const email = clean(payload.email || payload.email_address, LIMIT.email).toLowerCase();
+  const firstName = clean(payload.firstName, LIMIT.name);
+  const lastName = clean(payload.lastName, LIMIT.name);
 
   if (!email) {
     return json({ ok: false, error: "missing_email" }, 400);
@@ -61,6 +63,14 @@ export async function onRequestPost(context) {
 
   const body = { email_address: email };
   if (tags.length) body.tags = tags;
+
+  // EmailOctopus field tags. These are the two that exist on a new account by
+  // default. If they have been renamed, change the keys here to match.
+  const fields = {};
+  if (firstName) fields.FirstName = firstName;
+  if (lastName) fields.LastName = lastName;
+  if (Object.keys(fields).length) body.fields = fields;
+
   // "status" is deliberately omitted. EmailOctopus then uses the list's own
   // double opt-in setting to decide between pending and subscribed.
 
